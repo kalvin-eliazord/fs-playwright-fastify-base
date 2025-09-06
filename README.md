@@ -18,9 +18,30 @@
 ---
 
 ## Getting Started
-
 ### 1. Clone the template
 
 ```bash
 git clone https://github.com/your-username/patchwright-fastify-template.git my-new-project
 cd my-new-project
+````
+
+### 2. Run backend
+```bash
+cd backend
+npm install --save-dev nodemon
+npm run dev
+````
+
+### 3. Run frontend
+```bash
+cd frontend
+npm install
+npm run dev
+````
+
+---
+License
+
+Apache 2.0
+
+Happy Automating! 🦾

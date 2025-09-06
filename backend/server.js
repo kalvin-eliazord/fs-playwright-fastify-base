@@ -1,50 +1,70 @@
 import Fastify from "fastify";
-import { chromium } from "playwright";
-import * as dotenv from "dotenv";
+import cors from "@fastify/cors";
+import dotenv from "dotenv";
 
 dotenv.config();
 
-const fastify = Fastify({ logger: true });
+const app = Fastify({ logger: true });
 
-// Simple POST endpoint
-fastify.post("/post", async (request, reply) => {
-  const { content } = request.body;
-  if (!content) return reply.status(400).send({ error: "No content" });
+// -------------------------
+// CORS - allow frontend to call backend
+// -------------------------
+app.register(cors, {
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true); // allow curl/Postman
+    if (
+      process.env.NODE_ENV !== "production" &&
+      ["http://localhost:3000", "http://127.0.0.1:3000"].includes(origin)
+    ) {
+      return cb(null, true);
+    }
+    if (origin === process.env.FRONTEND_URL) return cb(null, true);
+    return cb(new Error("Not allowed by CORS"));
+  },
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "x-api-key"],
+  credentials: true,
+});
 
+// -------------------------
+// Lightweight API key auth
+// -------------------------
+app.addHook("preHandler", (request, reply, done) => {
+  if (process.env.NODE_ENV === "production") {
+    const apiKey = request.headers["x-api-key"];
+    if (!apiKey || apiKey !== process.env.MY_API_KEY) {
+      return reply.code(401).send({ error: "Unauthorized" });
+    }
+  }
+  done();
+});
+
+// -------------------------
+// Health check endpoint
+// -------------------------
+app.get("/health", async () => ({ status: "ok" }));
+
+// -------------------------
+// Bot trigger endpoint
+// -------------------------
+app.get("/start-bot", async (req, reply) => {
   try {
-    const browser = await chromium.launch({ headless: true });
-    const page = await browser.newPage();
-
-    // Placeholder login logic
-    // Replace with actual selectors when using a real site
-    await page.goto("https://example.com/login");
-    await page.fill("input[name='username']", process.env.THREADS_USER);
-    await page.fill("input[name='password']", process.env.THREADS_PASS);
-    await page.click("button[type='submit']");
-    await page.waitForLoadState("networkidle");
-
-    // Placeholder post logic
-    console.log("Posting content:", content);
-
-    await browser.close();
-    return reply.send({ success: true, message: "Posted (mock)" });
+    import("./bots/patchrightBot.js").then((module) => module.startBot());
+    return { message: "Bot started" };
   } catch (err) {
-    return reply.status(500).send({ success: false, error: err.message });
+    app.log.error(err);
+    return reply.code(500).send({ error: "Failed to start bot" });
   }
 });
 
-// Start server
-const start = async () => {
-  try {
-    await fastify.listen({
-      port: process.env.PORT || 3001,
-      host: "0.0.0.0",
-    });
-    console.log("🚀 Server running!");
-  } catch (err) {
-    fastify.log.error(err);
+// -------------------------
+// Start server (production-ready for Railway)
+// -------------------------
+const PORT = process.env.PORT || 4000;
+app.listen({ port: PORT, host: "0.0.0.0" }, (err, address) => {
+  if (err) {
+    app.log.error(err);
     process.exit(1);
   }
-};
-
-start();
+  console.log(`🚀 Server running at ${address}`);
+});
